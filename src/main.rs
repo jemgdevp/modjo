@@ -16,7 +16,7 @@ fn main() -> Result<(), io::Error> {
             // Aquí dibujaremos la UI más adelante
             let size = f.area();
             let block = ratatui::widgets::Block::default()
-                .title(" Modjo TUI - Presiona 'q' para salir ")
+                .title(" Modjo")
                 .borders(ratatui::widgets::Borders::ALL);
             f.render_widget(block, size);
         })?;
