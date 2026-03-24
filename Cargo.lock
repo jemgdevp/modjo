@@ -1165,7 +1165,7 @@ dependencies = [
 
 [[package]]
 name = "modjo"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "color-eyre",
  "crossterm 0.28.1",

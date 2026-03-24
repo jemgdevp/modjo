@@ -1,25 +1,25 @@
 [package]
 name = "modjo"
-version = "0.1.0"
+version = "0.0.1"
 edition = "2024"
 authors = ["Juan Esteban Manrique Giraldo <murksopps@gmail.com>"]
 description = "TUI API Client (Postman + Apidog clone)"
 
 [dependencies]
-# La interfaz gráfica
+# The graphical interface (TUI)
 ratatui = "0.30.0"
-# Corregido: event-stream con guion
+# Keyboard and mouse input handling for the TUI
 crossterm = { version = "0.28", features = ["event-stream"] } 
 
-# El motor de peticiones (Async)
+# Request handling and async runtime
 tokio = { version = "1.43", features = ["full"] }
-# Quitamos "blocking" para que Modjo sea fluido y no se trabe la UI
+
 reqwest = { version = "0.12", features = ["json"] } 
 
-# Manejo de datos y config
+# Management of configuration files
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-toml = "0.8" # La 0.9 a veces da problemas de compatibilidad con otros crates de config
+toml = "0.8" 
 
-# Utilidades visuales
+# Visuals Utils
 color-eyre = "0.6"
