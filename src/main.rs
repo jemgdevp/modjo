@@ -14,7 +14,7 @@ fn main() -> Result<(), io::Error> {
     loop {
         terminal.draw(|f| {
             // Aquí dibujaremos la UI más adelante
-            let size = f.size();
+            let size = f.area();
             let block = ratatui::widgets::Block::default()
                 .title(" Modjo TUI - Presiona 'q' para salir ")
                 .borders(ratatui::widgets::Borders::ALL);
@@ -22,10 +22,8 @@ fn main() -> Result<(), io::Error> {
         })?;
 
         // 3. Manejo de eventos (Teclado)
-        if let Event::Key(key) = event::read()? {
-            if key.code == KeyCode::Char('q') {
-                break;
-            }
+        if let Event::Key(key) = event::read()? && key.code == KeyCode::Char('q') {
+            break;
         }
     }
 
