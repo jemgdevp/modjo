@@ -1,9 +1,13 @@
+use crossterm::{
+    event::{self, Event, KeyCode},
+    execute,
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
+};
+use ratatui::{Terminal, backend::CrosstermBackend};
 use std::io;
-use ratatui::{backend::CrosstermBackend, Terminal};
-use crossterm::{event::{self, KeyCode, Event}, execute, terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen}};
 
 fn main() -> Result<(), io::Error> {
-    // 1. Preparar la terminal
+    // 1. Prepare the terminal
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen)?;
@@ -22,7 +26,9 @@ fn main() -> Result<(), io::Error> {
         })?;
 
         // 3. Manejo de eventos (Teclado)
-        if let Event::Key(key) = event::read()? && key.code == KeyCode::Char('q') {
+        if let Event::Key(key) = event::read()?
+            && key.code == KeyCode::Char('q')
+        {
             break;
         }
     }
