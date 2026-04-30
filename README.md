@@ -23,11 +23,42 @@ The ultimate TUI Client for API Exploration &amp; Testing. Postman’s power, Ap
 1. Download the latest release from our [GitHub Releases](https://github.com/jemgdevp/modjo/releases) page.
 2. Follow the installation instructions for your operating system.
 ## Usage
-1. Launch modjo from your terminal.
-2. Create a new API project or open an existing one.
-3. Use the intuitive interface to create and manage your API requests.
-4. Execute your requests and view the responses directly in the terminal.
-5. Collaborate with your team and share your projects seamlessly.
+### Current MVP (Ratatui)
+Run:
+
+```bash
+cargo run
+```
+
+Main flow:
+1. Edit `Metodo`, `URL`, `Headers` and `Body` directly in the TUI.
+2. Press `s` to send the request.
+3. Review status, time, size and response body in the response panel.
+4. Press `c` to save current request in collections.
+5. Press `Enter` over sidebar items to load history/collection requests.
+
+Keyboard shortcuts:
+- `q`: Quit
+- `Tab`: Move focus between panels
+- `s`: Send request
+- `c`: Save current request to collections
+- `h`: Open history in sidebar
+- `l`: Open collections in sidebar
+- `Up` / `Down`: Navigate sidebar items
+- `Enter`: Load selected sidebar item
+
+Mouse support:
+- Left click selects the active panel (sidebar, URL, headers, body, response).
+
+Persistence:
+- App data is stored in `.modjo/` in your current project folder:
+  - `.modjo/history.json`
+  - `.modjo/collections.json`
+  - `.modjo/env.toml`
+
+Environment variables:
+- You can interpolate variables in URL/body/headers with `{{var_name}}`.
+- Variables are loaded from `.modjo/env.toml`.
 ## Contributing
 We welcome contributions from the community! Please read our [CONTRIBUTING](https://github.com/jemgdevp/modjo/blob/main/CONTRIBUTING.md) for guidelines
 

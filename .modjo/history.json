@@ -1,0 +1,22 @@
+[
+  {
+    "method": "POST",
+    "url": "https://dokploy.jemg.dev/api",
+    "status": 404
+  },
+  {
+    "method": "GET",
+    "url": "https://dokploy.jemg.dev/api",
+    "status": 404
+  },
+  {
+    "method": "GET",
+    "url": "https://dokploy.jemg.dev/api",
+    "status": 404
+  },
+  {
+    "method": "GET",
+    "url": "https://jemg.dev",
+    "status": 502
+  }
+]
