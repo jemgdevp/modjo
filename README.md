@@ -1,66 +1,205 @@
 # modjo
-The ultimate TUI Client for API Exploration &amp; Testing. Postman’s power, Apidog’s workflow, Terminal’s speed.
 
-## Docs 
-### Explore our comprehensive documentation to get the most out of modjo:
-- Site Documentation: [modjo.jemg.dev](https://modjo.jemg.dev/docs)
+El cliente TUI definitivo para explorar y probar APIs. Toda la potencia de Postman, el flujo de Apidog y la velocidad de la terminal. Hecho en Colombia con Rust.
 
-## Features
-- **Intuitive TUI Interface**: Navigate your API projects with ease using a sleek terminal interface.
-- **Comprehensive API Testing**: Create, manage, and execute API requests with support for various HTTP methods, headers, and body types.
-- **Environment Management**: Define and switch between multiple environments to test your APIs in different contexts.
-- **Collaboration**: Share your API projects with your team and collaborate in real-time.
-- **Extensive Plugin Ecosystem**: Extend modjo’s functionality with a wide range of plugins for authentication, data generation, and more.
-- **Cross-Platform Support**: Available on Windows, macOS, and Linux.
+[![CI/CD](https://github.com/jemgdevp/modjo/actions/workflows/rust.yml/badge.svg)](https://github.com/jemgdevp/modjo/actions/workflows/rust.yml)
+[![Licencia MIT](https://img.shields.io/badge/licencia-MIT-verde.svg)](./LICENSE)
+[![Versión](https://img.shields.io/badge/versi%C3%B3n-0.0.1-azul.svg)](./Cargo.toml)
 
-## Why Choose modjo?
-- **Speed**: Experience lightning-fast performance with a terminal-based interface that eliminates the overhead of graphical applications.
-- **Flexibility**: Tailor your API testing workflow with customizable plugins and environments.
-- **Collaboration**: Work seamlessly with your team, sharing projects and insights without leaving the terminal.
-- **Open Source**: Join a vibrant community of developers contributing to the growth and improvement of modjo.
+---
 
-## Installation
-1. Download the latest release from our [GitHub Releases](https://github.com/jemgdevp/modjo/releases) page.
-2. Follow the installation instructions for your operating system.
-## Usage
-### Current MVP (Ratatui)
-Run:
+## Documentación
+
+Explorá nuestra documentación completa para sacarle el jugo a modjo:
+
+- Sitio oficial: [modjo.jemg.dev](https://modjo.jemg.dev/docs)
+- Guía de instalación, atajos, temas y más en la [wiki](https://github.com/jemgdevp/modjo/wiki)
+
+---
+
+## Características
+
+- **Interfaz TUI intuitiva**: Navegá tus proyectos de API con una interfaz de terminal limpia y rápida. Modos Normal/Inserción estilo Vim.
+- **Pruebas de API completas**: Creá, administrá y ejecutá peticiones HTTP con soporte para métodos GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS, headers personalizados y cuerpo a la medida.
+- **Manejo de entornos**: Definí variables de entorno con `{{nombre_var}}` en URL, headers y cuerpo, y cambialas desde `.modjo/env.toml`.
+- **Persistencia local**: Toda la información se guarda en la carpeta `.modjo/` de tu proyecto (historial, colecciones, variables de entorno). Nada sale de tu máquina.
+- **Resaltado de sintaxis JSON**: Las respuestas JSON se muestran con colores por tipo de dato (claves, strings, números, booleanos, null).
+- **Soporte para mouse**: Clic para enfocar paneles, hover para resaltar, arrastre para redimensionar, scroll para navegar respuestas.
+- **Temas y dualidad de idiomas**: Cinco temas (OC-2 Dark, OC-2 Light, Catppuccin, Nord, Dracula) e interfaz en español colombiano o inglés.
+- **Exportación e importación**: Compartí snapshots de tus peticiones con archivos `modjo-export.json` / `modjo-import.json`.
+- **Paleta de comandos**: `Ctrl+P` abre una lista de todas las acciones disponibles con sus atajos.
+- **Deshacer y portapapeles interno**: Ctrl+Z / `u` para deshacer, `y` y `p` para copiar y pegar.
+- **Multiplataforma**: Corre en Windows, macOS y Linux. Solo necesitás Rust y una terminal con soporte Unicode.
+
+---
+
+## ¿Por qué modjo?
+
+| Razón | Descripción |
+|---|---|
+| **Velocidad** | Arranque y ejecución al instante. Sin navegador, sin Electron, sin esperas. |
+| **Flexibilidad** | Variables de entorno, temas, atajos personalizables y flujo modal. |
+| **Colaboración** | Snapshots exportables para compartir peticiones con tu equipo. |
+| **Código abierto** | MIT. La comunidad decide el rumbo. |
+| **Hecho en Colombia** | Por dev colombiano, pa' todo el mundo. |
+
+---
+
+## Instalación
+
+### Desde crates.io (próximamente)
+
+```bash
+cargo install modjo
+```
+
+### Desde el código fuente
+
+Necesitás [Rust](https://rustup.rs/) (edición 2024) instalado.
+
+```bash
+git clone https://github.com/jemgdevp/modjo.git
+cd modjo
+cargo build --release
+./target/release/modjo
+```
+
+### Binarios precompilados
+
+Descargá el binario para tu sistema desde la página de [Releases](https://github.com/jemgdevp/modjo/releases).
+
+---
+
+## Uso
 
 ```bash
 cargo run
+# o si ya está instalado:
+modjo
 ```
 
-Main flow:
-1. Edit `Metodo`, `URL`, `Headers` and `Body` directly in the TUI.
-2. Press `s` to send the request.
-3. Review status, time, size and response body in the response panel.
-4. Press `c` to save current request in collections.
-5. Press `Enter` over sidebar items to load history/collection requests.
+### Flujo principal
 
-Keyboard shortcuts:
-- `q`: Quit
-- `Tab`: Move focus between panels
-- `s`: Send request
-- `c`: Save current request to collections
-- `h`: Open history in sidebar
-- `l`: Open collections in sidebar
-- `Up` / `Down`: Navigate sidebar items
-- `Enter`: Load selected sidebar item
+1. Seleccioná el **método HTTP** con `Ctrl+M` y escribí la **URL**.
+2. Agregá **headers** y **cuerpo** en los paneles correspondientes.
+3. Presioná `r` para enviar la petición.
+4. Revisá **estado, tiempo, tamaño** y la respuesta en el panel de respuesta.
+5. Presioná `c` para guardar la petición actual en colecciones.
+6. Presioná `Enter` sobre un ítem del sidebar para cargarlo de vuelta.
 
-Mouse support:
-- Left click selects the active panel (sidebar, URL, headers, body, response).
+### Atajos de teclado
 
-Persistence:
-- App data is stored in `.modjo/` in your current project folder:
-  - `.modjo/history.json`
-  - `.modjo/collections.json`
-  - `.modjo/env.toml`
+#### Modo Normal (Vim-like)
 
-Environment variables:
-- You can interpolate variables in URL/body/headers with `{{var_name}}`.
-- Variables are loaded from `.modjo/env.toml`.
-## Contributing
-We welcome contributions from the community! Please read our [CONTRIBUTING](https://github.com/jemgdevp/modjo/blob/main/CONTRIBUTING.md) for guidelines
+| Tecla | Acción |
+|---|---|
+| `q` | Salir de modjo |
+| `i` | Entrar en modo inserción |
+| `Tab` | Rotar el foco entre paneles |
+| `1` / `2` / `3` / `4` | Ir a la pestaña de Sidebar, Request, Body o Response |
+| `r` | Enviar la petición actual |
+| `c` | Guardar petición actual en colecciones |
+| `w` | Guardar todo (historial + colecciones + variables) |
+| `o` | Importar snapshot |
+| `e` | Exportar snapshot |
+| `m` | Abrir selector de método HTTP |
+| `f` | Alternar formato JSON (pretty / raw) |
+| `T` | Abrir selector de tema |
+| `L` | Abrir selector de idioma |
+| `?` | Mostrar ayuda rápida |
+| `h` / `l` | Navegar items del sidebar (historial / colecciones) |
+| `→` / `←` | Igual que h/l |
+| `↑` / `↓` | Navegar entre items del sidebar |
+| `Enter` | Cargar el ítem seleccionado del sidebar |
+| `y` / `p` | Copiar / Pegar (portapapeles interno) |
+| `u` / `Ctrl+Z` | Deshacer |
+| `Ctrl+P` | Abrir paleta de comandos |
+| `Ctrl+A` | Sugerencia de IA |
 
-## License
-modjo is licensed under the MIT License. See the [LICENSE](https://github.com/jemgdevp/modjo/blob/main/LICENSE) file for details.
+#### Modo Inserción
+
+| Tecla | Acción |
+|---|---|
+| `Esc` | Volver a modo Normal |
+| `Tab` | Salir del campo de texto actual |
+| `Ctrl+Z` | Deshacer última edición |
+| `Enter` | Insertar nueva línea en el campo |
+| Teclas imprimibles | Insertar texto (autocompletado de corchetes y comillas) |
+
+### Soporte de mouse
+
+- **Clic izquierdo**: Selecciona el panel activo (sidebar, URL, headers, cuerpo, respuesta).
+- **Hover**: Resalta los elementos interactivos de la interfaz.
+- **Arrastre**: Redimensiona el ancho del sidebar y la altura de los paneles de headers/cuerpo/respuesta.
+- **Scroll**: Navega el panel de respuesta y la lista del sidebar.
+
+---
+
+## Persistencia
+
+Los datos de la aplicación se guardan en la carpeta `.modjo/` del directorio actual:
+
+```
+.modjo/
+├── history.json       # Historial de peticiones (máx. 150)
+├── collections.json   # Colecciones guardadas
+└── env.toml           # Variables de entorno
+```
+
+### Variables de entorno
+
+Interpolá variables en URL, headers y cuerpo con la sintaxis `{{nombre_var}}`.
+
+Ejemplo de `.modjo/env.toml`:
+
+```toml
+api_url = "https://api.ejemplo.co/v2"
+token = "bearer-abc123"
+```
+
+Luego usalas así en la URL:
+
+```
+{{api_url}}/usuarios?auth={{token}}
+```
+
+---
+
+## Estructura del proyecto
+
+```
+src/
+├── main.rs             # Punto de entrada, ciclo principal y splash screen
+├── app.rs              # Estado de la aplicación, modelos y lógica de negocio
+├── input.rs            # Manejo de teclado (3 modos) y mouse (hover/clic/scroll/drag)
+├── http/
+│   ├── mod.rs          # Declaración del módulo HTTP
+│   └── client.rs       # Cliente HTTP asíncrono (reqwest + tokio)
+├── storage/
+│   └── mod.rs          # Persistencia en .modjo/ (JSON/TOML)
+└── ui/
+    ├── mod.rs          # Renderizado principal de la interfaz
+    ├── components.rs   # Componentes de modales y overlays
+    ├── splash.rs       # Animación de carga al iniciar
+    └── theme.rs        # Sistema de 5 temas
+```
+
+## CI/CD
+
+Este proyecto usa GitHub Actions para compilar y probar en cada push y PR contra `main`. Ver [.github/workflows/rust.yml](.github/workflows/rust.yml).
+
+---
+
+## Contribuir
+
+¿Encontraste un bug, tenés una idea o querés meterle mano al código? ¡Bienvenido! Leé [CONTRIBUTING.md](./CONTRIBUTING.md) y el [Código de Conducta](./CODE_OF_CONDUCT.md).
+
+---
+
+## Licencia
+
+modjo es software libre bajo la licencia MIT. Leé el archivo [LICENSE](./LICENSE) para más detalles.
+
+---
+
+Creado con  por [Juan Esteban Manrique Giraldo](https://github.com/jemgdevp) desde Colombia para el mundo.
