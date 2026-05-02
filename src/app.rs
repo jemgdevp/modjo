@@ -9,6 +9,147 @@ use std::{collections::BTreeMap, fs, path::PathBuf, time::Duration};
 
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Idioma {
+    En,
+    Es,
+}
+
+impl Default for Idioma {
+    fn default() -> Self {
+        Self::En
+    }
+}
+
+impl Idioma {
+    pub fn todos() -> &'static [Self] {
+        &[Self::En, Self::Es]
+    }
+
+    pub fn nombre(self) -> &'static str {
+        match self {
+            Self::En => "English",
+            Self::Es => "Español (Colombia)",
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Toast {
+    pub mensaje: String,
+    pub creado_en: std::time::Instant,
+    pub duracion: Duration,
+}
+
+impl Toast {
+    pub fn nuevo(mensaje: impl Into<String>) -> Self {
+        Self {
+            mensaje: mensaje.into(),
+            creado_en: std::time::Instant::now(),
+            duracion: Duration::from_millis(2000),
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn nuevo_con_duracion(mensaje: impl Into<String>, duracion: Duration) -> Self {
+        Self {
+            mensaje: mensaje.into(),
+            creado_en: std::time::Instant::now(),
+            duracion,
+        }
+    }
+
+    pub fn activo(&self) -> bool {
+        self.creado_en.elapsed() < self.duracion
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ClipboardAnim {
+    #[allow(dead_code)]
+    pub texto: String,
+    pub creado_en: std::time::Instant,
+}
+
+impl ClipboardAnim {
+    pub fn nuevo(texto: impl Into<String>) -> Self {
+        Self {
+            texto: texto.into(),
+            creado_en: std::time::Instant::now(),
+        }
+    }
+
+    pub fn activo(&self) -> bool {
+        self.creado_en.elapsed() < Duration::from_millis(800)
+    }
+
+    pub fn progreso(&self) -> f32 {
+        let elapsed = self.creado_en.elapsed().as_millis() as f32;
+        (elapsed / 800.0).min(1.0)
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct CursorState {
+    pub posicion: usize,
+}
+
+#[derive(Debug, Clone)]
+pub struct UndoEntry {
+    pub campo: CampoEditado,
+    pub contenido_anterior: String,
+    pub cursor_anterior: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CampoEditado {
+    Metodo,
+    Url,
+    Body,
+    HeaderValor(usize),
+}
+
+#[derive(Debug, Clone)]
+pub struct DragState {
+    pub tipo: TipoDrag,
+    pub inicio_x: u16,
+    pub inicio_y: u16,
+    pub valor_inicial: u16,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TipoDrag {
+    SidebarAncho,
+    AltoHeaders,
+    AltoBody,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum HoverZone {
+    #[default]
+    Ninguno,
+    SidebarTabHist,
+    SidebarTabCol,
+    SidebarItem(usize),
+    BtnMetodo,
+    BtnUrl,
+    BtnHeaders,
+    BtnBody,
+    BtnResponse,
+    ResizeSidebar,
+    ResizeHeaders,
+    ResizeBody,
+    StatusMode,
+    ModalItem(usize),
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct MouseState {
+    pub row: u16,
+    pub col: u16,
+    pub hover: HoverZone,
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum ZonaFoco {
     MenuSuperior,
@@ -52,6 +193,31 @@ pub enum ModalActivo {
     SelectorMetodo,
     SelectorMenuSuperior,
     AyudaRapida,
+    CommandPalette,
+    SelectorTema,
+    SelectorIdioma,
+}
+
+#[derive(Debug, Clone)]
+pub struct ComandoPalette {
+    pub etiqueta: &'static str,
+    pub atajo: &'static str,
+    pub accion: AccionMenu,
+}
+
+pub fn comandos_disponibles() -> Vec<ComandoPalette> {
+    vec![
+        ComandoPalette { etiqueta: "Run request", atajo: "r", accion: AccionMenu::EjecutarRequest },
+        ComandoPalette { etiqueta: "Save to collection", atajo: "w", accion: AccionMenu::GuardarTodo },
+        ComandoPalette { etiqueta: "Export snapshot", atajo: "e", accion: AccionMenu::Exportar },
+        ComandoPalette { etiqueta: "Import snapshot", atajo: "o", accion: AccionMenu::Importar },
+        ComandoPalette { etiqueta: "Select HTTP method", atajo: "m", accion: AccionMenu::SelectorMetodo },
+        ComandoPalette { etiqueta: "Toggle JSON format", atajo: "f", accion: AccionMenu::ToggleJsonFormat },
+        ComandoPalette { etiqueta: "Change theme", atajo: "T", accion: AccionMenu::SelectorTema },
+        ComandoPalette { etiqueta: "Change language", atajo: "L", accion: AccionMenu::SelectorIdioma },
+        ComandoPalette { etiqueta: "AI suggestion", atajo: "ctrl+a", accion: AccionMenu::AyudaIa },
+        ComandoPalette { etiqueta: "Help", atajo: "?", accion: AccionMenu::AbrirAyudaRapida },
+    ]
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -189,6 +355,42 @@ pub struct EstadoApp {
     pub menu_selector_idx: usize,
     #[serde(skip, default)]
     pub portapapeles_interno: String,
+    // --- Nuevos campos para cursor, undo, animaciones ---
+    #[serde(skip, default)]
+    pub cursor: CursorState,
+    #[serde(skip, default)]
+    pub undo_stack: Vec<UndoEntry>,
+    #[serde(skip, default)]
+    pub toast: Option<Toast>,
+    #[serde(skip, default)]
+    pub clipboard_anim: Option<ClipboardAnim>,
+    #[serde(skip, default)]
+    pub tick: u64,
+    #[serde(skip, default)]
+    pub drag_state: Option<DragState>,
+    #[serde(skip, default)]
+    pub sidebar_hover: Option<usize>,
+    #[serde(skip, default)]
+    pub focus_flash: Option<std::time::Instant>,
+    #[serde(skip, default)]
+    pub mouse: MouseState,
+    #[serde(skip, default)]
+    pub terminal_height: u16,
+    // --- Theme ---
+    #[serde(default)]
+    pub tema: crate::ui::theme::TemaVariant,
+    // --- Language ---
+    #[serde(default)]
+    pub idioma: Idioma,
+    // --- Response panel state ---
+    #[serde(skip, default)]
+    pub response_scroll: u16,
+    #[serde(skip, default = "response_formatted_default")]
+    pub response_formatted: bool,
+    #[serde(skip, default)]
+    pub response_body_pretty: String,
+    #[serde(skip, default)]
+    pub response_body_raw: String,
 }
 
 impl Default for EstadoApp {
@@ -204,7 +406,7 @@ impl Default for EstadoApp {
             sidebar_index: 0,
             loading: false,
             last_error: None,
-            mensaje_estado: "Listo, parcero. Pulsa i para escribir.".to_string(),
+            mensaje_estado: "ready. press i to type.".to_string(),
             tab_activo: 0,
             ancho_sidebar: 30,
             alto_headers: 8,
@@ -215,6 +417,22 @@ impl Default for EstadoApp {
             menu_superior_activo: MenuSuperior::Help,
             menu_selector_idx: 0,
             portapapeles_interno: String::new(),
+            cursor: CursorState::default(),
+            undo_stack: Vec::new(),
+            toast: None,
+            clipboard_anim: None,
+            tick: 0,
+            drag_state: None,
+            sidebar_hover: None,
+            focus_flash: None,
+            mouse: MouseState::default(),
+            terminal_height: 24,
+            tema: crate::ui::theme::TemaVariant::default(),
+            idioma: Idioma::default(),
+            response_scroll: 0,
+            response_formatted: true,
+            response_body_pretty: String::new(),
+            response_body_raw: String::new(),
         }
     }
 }
@@ -237,6 +455,10 @@ fn menu_superior_default() -> MenuSuperior {
 
 fn menu_selector_idx_default() -> usize {
     0
+}
+
+fn response_formatted_default() -> bool {
+    true
 }
 
 impl EstadoApp {
@@ -262,25 +484,41 @@ impl EstadoApp {
         self.loading = false;
         if let Some(err) = data.error {
             self.last_error = Some(err.clone());
-            self.mensaje_estado = format!("Uy, fallo la vuelta: {err}");
+            self.mensaje_estado = format!("error: {err}");
             return;
         }
 
         self.response = data.response;
         self.last_error = None;
-        self.history.insert(
-            0,
-            HistoryEntry {
-                method: self.request.method.clone(),
-                url: self.request.url.clone(),
-                status: self.response.as_ref().and_then(|r| r.status),
-            },
-        );
+        self.response_scroll = 0;
+
+        // Cache both versions of the body
+        if let Some(ref resp) = self.response {
+            self.response_body_pretty = formatear_json_o_texto(&resp.body);
+            self.response_body_raw = resp.body.clone();
+        }
+
+        // Deduplicate: if same method+url exists, update it instead of inserting
+        let existing_idx = self.history.iter().position(|entry| {
+            entry.method == self.request.method && entry.url == self.request.url
+        });
+
+        let new_entry = HistoryEntry {
+            method: self.request.method.clone(),
+            url: self.request.url.clone(),
+            status: self.response.as_ref().and_then(|r| r.status),
+        };
+
+        if let Some(idx) = existing_idx {
+            self.history.remove(idx);
+        }
+        self.history.insert(0, new_entry);
+
         if self.history.len() > 150 {
             self.history.truncate(150);
         }
         let _ = crate::storage::save_history(self);
-        self.mensaje_estado = "Respuesta lista. Todo bien, mi llave.".to_string();
+        self.mensaje_estado = "response received".to_string();
     }
 
     /// Guarda el request actual en colecciones con un nombre derivado.
@@ -375,6 +613,443 @@ impl EstadoApp {
         self.alto_body = ajustar_rango_u16(self.alto_body, dh_body, 5, 16);
     }
 
+    /// Devuelve el texto activo según foco.
+    pub fn texto_foco(&self) -> &str {
+        match self.foco {
+            ZonaFoco::Metodo => &self.request.method,
+            ZonaFoco::Url => &self.request.url,
+            ZonaFoco::Body => &self.request.body,
+            ZonaFoco::Headers => self
+                .request
+                .headers
+                .first()
+                .map(|(_, v)| v.as_str())
+                .unwrap_or(""),
+            _ => "",
+        }
+    }
+
+    /// Devuelve una referencia mutable al texto activo según foco.
+    pub fn texto_foco_mut(&mut self) -> Option<&mut String> {
+        match self.foco {
+            ZonaFoco::Metodo => Some(&mut self.request.method),
+            ZonaFoco::Url => Some(&mut self.request.url),
+            ZonaFoco::Body => Some(&mut self.request.body),
+            ZonaFoco::Headers => self.request.headers.first_mut().map(|(_, v)| v),
+            _ => None,
+        }
+    }
+
+    /// Campo editado actual según foco.
+    pub fn campo_actual(&self) -> Option<CampoEditado> {
+        match self.foco {
+            ZonaFoco::Metodo => Some(CampoEditado::Metodo),
+            ZonaFoco::Url => Some(CampoEditado::Url),
+            ZonaFoco::Body => Some(CampoEditado::Body),
+            ZonaFoco::Headers => Some(CampoEditado::HeaderValor(0)),
+            _ => None,
+        }
+    }
+
+    /// Empuja estado al undo stack antes de una mutación.
+    pub fn push_undo(&mut self) {
+        let campo = self.campo_actual();
+        let texto = match self.foco {
+            ZonaFoco::Metodo => Some(self.request.method.clone()),
+            ZonaFoco::Url => Some(self.request.url.clone()),
+            ZonaFoco::Body => Some(self.request.body.clone()),
+            ZonaFoco::Headers => self.request.headers.first().map(|(_, v)| v.clone()),
+            _ => None,
+        };
+        if let (Some(campo), Some(texto)) = (campo, texto) {
+            self.undo_stack.push(UndoEntry {
+                campo,
+                contenido_anterior: texto,
+                cursor_anterior: self.cursor.posicion,
+            });
+            if self.undo_stack.len() > 100 {
+                self.undo_stack.remove(0);
+            }
+        }
+    }
+
+    /// Deshace la última mutación.
+    pub fn undo(&mut self) {
+        if let Some(entry) = self.undo_stack.pop() {
+            match entry.campo {
+                CampoEditado::Metodo => self.request.method = entry.contenido_anterior,
+                CampoEditado::Url => self.request.url = entry.contenido_anterior,
+                CampoEditado::Body => self.request.body = entry.contenido_anterior,
+                CampoEditado::HeaderValor(i) => {
+                    if let Some((_, v)) = self.request.headers.get_mut(i) {
+                        *v = entry.contenido_anterior;
+                    }
+                }
+            }
+            self.cursor.posicion = entry.cursor_anterior;
+            self.toast = Some(Toast::nuevo("undo"));
+        }
+    }
+
+    /// Mueve cursor a la izquierda.
+    pub fn cursor_left(&mut self) {
+        self.cursor.posicion = self.cursor.posicion.saturating_sub(1);
+    }
+
+    /// Mueve cursor a la derecha.
+    pub fn cursor_right(&mut self) {
+        let len = self.texto_foco().len();
+        if self.cursor.posicion < len {
+            self.cursor.posicion += 1;
+        }
+    }
+
+    /// Mueve cursor al inicio.
+    pub fn cursor_home(&mut self) {
+        self.cursor.posicion = 0;
+    }
+
+    /// Mueve cursor al final.
+    pub fn cursor_end(&mut self) {
+        self.cursor.posicion = self.texto_foco().len();
+    }
+
+    /// Sincroniza cursor al final del texto (al cambiar de foco).
+    pub fn sync_cursor_to_end(&mut self) {
+        self.cursor.posicion = self.texto_foco().len();
+    }
+
+    /// Mueve cursor a la línea anterior (multi-línea).
+    pub fn cursor_up(&mut self) {
+        let texto = self.texto_foco().to_string();
+        let pos = self.cursor.posicion.min(texto.len());
+        // Encontrar inicio de línea actual
+        let line_start = texto[..pos].rfind('\n').map(|i| i + 1).unwrap_or(0);
+        if line_start == 0 {
+            // Ya estamos en la primera línea
+            self.cursor.posicion = 0;
+            return;
+        }
+        // Calcular columna actual
+        let col = pos - line_start;
+        // Encontrar inicio de línea anterior
+        let prev_line_end = line_start - 1; // el \n anterior
+        let prev_line_start = texto[..prev_line_end].rfind('\n').map(|i| i + 1).unwrap_or(0);
+        let prev_line_len = prev_line_end - prev_line_start;
+        let new_col = col.min(prev_line_len);
+        self.cursor.posicion = prev_line_start + new_col;
+    }
+
+    /// Mueve cursor a la siguiente línea (multi-línea).
+    pub fn cursor_down(&mut self) {
+        let texto = self.texto_foco().to_string();
+        let pos = self.cursor.posicion.min(texto.len());
+        // Encontrar inicio de línea actual
+        let line_start = texto[..pos].rfind('\n').map(|i| i + 1).unwrap_or(0);
+        let col = pos - line_start;
+        // Encontrar fin de línea actual
+        let line_end = texto[pos..].find('\n').map(|i| pos + i).unwrap_or(texto.len());
+        if line_end >= texto.len() {
+            // Ya estamos en la última línea
+            return;
+        }
+        // Inicio de siguiente línea
+        let next_line_start = line_end + 1;
+        let next_line_end = texto[next_line_start..]
+            .find('\n')
+            .map(|i| next_line_start + i)
+            .unwrap_or(texto.len());
+        let next_line_len = next_line_end - next_line_start;
+        let new_col = col.min(next_line_len);
+        self.cursor.posicion = next_line_start + new_col;
+    }
+
+    /// Mueve cursor al inicio de la línea actual.
+    pub fn cursor_line_start(&mut self) {
+        let texto = self.texto_foco().to_string();
+        let pos = self.cursor.posicion.min(texto.len());
+        self.cursor.posicion = texto[..pos].rfind('\n').map(|i| i + 1).unwrap_or(0);
+    }
+
+    /// Mueve cursor al final de la línea actual.
+    pub fn cursor_line_end(&mut self) {
+        let texto = self.texto_foco().to_string();
+        let pos = self.cursor.posicion.min(texto.len());
+        self.cursor.posicion = texto[pos..]
+            .find('\n')
+            .map(|i| pos + i)
+            .unwrap_or(texto.len());
+    }
+
+    /// Inserta carácter con auto-completado de brackets/quotes.
+    pub fn insertar_char_con_autocomplete(&mut self, ch: char) {
+        let closing = match ch {
+            '{' => Some('}'),
+            '[' => Some(']'),
+            '(' => Some(')'),
+            '"' => Some('"'),
+            '\'' => Some('\''),
+            '`' => Some('`'),
+            _ => None,
+        };
+
+        self.insertar_char(ch);
+
+        if let Some(c) = closing {
+            // No duplicar si ya hay el mismo carácter justo después
+            let texto = self.texto_foco().to_string();
+            let pos = self.cursor.posicion;
+            let next_char = texto.chars().nth(pos);
+            if next_char != Some(c) {
+                self.insertar_char(c);
+                // Retroceder cursor para quedar entre los brackets
+                self.cursor.posicion = self.cursor.posicion.saturating_sub(1);
+            }
+        }
+    }
+
+    /// Inserta carácter en posición del cursor.
+    pub fn insertar_char(&mut self, ch: char) {
+        let pos = self.cursor.posicion;
+        match self.foco {
+            ZonaFoco::Metodo => {
+                let p = pos.min(self.request.method.len());
+                self.request.method.insert(p, ch);
+                self.cursor.posicion = p + 1;
+            }
+            ZonaFoco::Url => {
+                let p = pos.min(self.request.url.len());
+                self.request.url.insert(p, ch);
+                self.cursor.posicion = p + 1;
+            }
+            ZonaFoco::Body => {
+                let p = pos.min(self.request.body.len());
+                self.request.body.insert(p, ch);
+                self.cursor.posicion = p + 1;
+            }
+            ZonaFoco::Headers => {
+                if self.request.headers.is_empty() {
+                    self.request.headers.push((String::new(), String::new()));
+                }
+                if let Some((_, v)) = self.request.headers.first_mut() {
+                    let p = pos.min(v.len());
+                    v.insert(p, ch);
+                    self.cursor.posicion = p + 1;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Borra carácter antes del cursor (backspace).
+    pub fn borrar_char(&mut self) {
+        let pos = self.cursor.posicion;
+        if pos == 0 {
+            return;
+        }
+        match self.foco {
+            ZonaFoco::Metodo => {
+                if pos <= self.request.method.len() {
+                    self.request.method.remove(pos - 1);
+                    self.cursor.posicion = pos - 1;
+                }
+            }
+            ZonaFoco::Url => {
+                if pos <= self.request.url.len() {
+                    self.request.url.remove(pos - 1);
+                    self.cursor.posicion = pos - 1;
+                }
+            }
+            ZonaFoco::Body => {
+                if pos <= self.request.body.len() {
+                    self.request.body.remove(pos - 1);
+                    self.cursor.posicion = pos - 1;
+                }
+            }
+            ZonaFoco::Headers => {
+                if let Some((_, v)) = self.request.headers.first_mut() {
+                    if pos <= v.len() {
+                        v.remove(pos - 1);
+                        self.cursor.posicion = pos - 1;
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Borra carácter en la posición del cursor (delete).
+    pub fn borrar_adelante(&mut self) {
+        let pos = self.cursor.posicion;
+        match self.foco {
+            ZonaFoco::Metodo => {
+                if pos < self.request.method.len() {
+                    self.request.method.remove(pos);
+                }
+            }
+            ZonaFoco::Url => {
+                if pos < self.request.url.len() {
+                    self.request.url.remove(pos);
+                }
+            }
+            ZonaFoco::Body => {
+                if pos < self.request.body.len() {
+                    self.request.body.remove(pos);
+                }
+            }
+            ZonaFoco::Headers => {
+                if let Some((_, v)) = self.request.headers.first_mut() {
+                    if pos < v.len() {
+                        v.remove(pos);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Muestra un toast temporal.
+    pub fn mostrar_toast(&mut self, mensaje: impl Into<String>) {
+        self.toast = Some(Toast::nuevo(mensaje));
+    }
+
+    /// Inicia animación de clipboard.
+    pub fn animar_clipboard(&mut self, texto: impl Into<String>) {
+        self.clipboard_anim = Some(ClipboardAnim::nuevo(texto));
+    }
+
+    /// Toggle entre JSON formateado y raw.
+    pub fn toggle_response_format(&mut self) {
+        self.response_formatted = !self.response_formatted;
+        self.mostrar_toast(if self.response_formatted {
+            "json: pretty"
+        } else {
+            "json: raw"
+        });
+    }
+
+    /// Devuelve el body del response según el formato seleccionado.
+    pub fn response_body_display(&self) -> &str {
+        if self.response_formatted {
+            &self.response_body_pretty
+        } else {
+            &self.response_body_raw
+        }
+    }
+
+    /// Scroll up en el response.
+    pub fn response_scroll_up(&mut self, lines: u16) {
+        self.response_scroll = self.response_scroll.saturating_sub(lines);
+    }
+
+    /// Scroll down en el response.
+    pub fn response_scroll_down(&mut self, lines: u16, max_lines: u16) {
+        if max_lines > 0 {
+            self.response_scroll = (self.response_scroll + lines).min(max_lines);
+        }
+    }
+
+    /// Page up en el response.
+    pub fn response_page_up(&mut self, page_size: u16) {
+        self.response_scroll = self.response_scroll.saturating_sub(page_size);
+    }
+
+    /// Page down en el response.
+    pub fn response_page_down(&mut self, page_size: u16, max_lines: u16) {
+        if max_lines > 0 {
+            self.response_scroll = (self.response_scroll + page_size).min(max_lines);
+        }
+    }
+
+    /// Devuelve el número de líneas del body del response.
+    pub fn response_body_lines(&self) -> u16 {
+        self.response_body_display().lines().count() as u16
+    }
+
+    /// Actualiza la zona de hover basada en la posición del mouse.
+    pub fn actualizar_hover(&mut self, row: u16, col: u16, terminal_height: u16) {
+        self.mouse.row = row;
+        self.mouse.col = col;
+
+        // Modal abierto — los modales están centrados, calculamos offset dinámicamente
+        if self.modal_activo != ModalActivo::Ninguno {
+            // El modal empieza aproximadamente en terminal_height/2 - alto_modal/2
+            // Para simplificar, asumimos que el contenido del modal empieza ~4 filas
+            // después del borde superior del modal
+            let modal_y_offset = terminal_height.saturating_sub(20) / 2 + 1; // rough top of modal content
+            if row >= modal_y_offset + 3 {
+                let idx = (row - modal_y_offset - 3) as usize;
+                self.mouse.hover = HoverZone::ModalItem(idx);
+            } else {
+                self.mouse.hover = HoverZone::Ninguno;
+            }
+            return;
+        }
+
+        let sidebar_w = self.ancho_sidebar;
+        // Layout: method+url = 3 filas (rows 0-2), headers empieza en row 3
+        let fila_borde_headers = 3 + self.alto_headers;
+        let fila_borde_body = fila_borde_headers + self.alto_body;
+
+        // Resize zones
+        if col >= sidebar_w.saturating_sub(1) && col <= sidebar_w + 1 && row >= 1 {
+            self.mouse.hover = HoverZone::ResizeSidebar;
+            return;
+        }
+        if row == fila_borde_headers && col >= sidebar_w {
+            self.mouse.hover = HoverZone::ResizeHeaders;
+            return;
+        }
+        if row == fila_borde_body && col >= sidebar_w {
+            self.mouse.hover = HoverZone::ResizeBody;
+            return;
+        }
+
+        // Status bar (última fila)
+        if terminal_height > 0 && row >= terminal_height.saturating_sub(1) {
+            self.mouse.hover = HoverZone::StatusMode;
+            return;
+        }
+
+        // Sidebar: tabs en row 0, items desde row 1
+        if col < sidebar_w {
+            if row == 0 {
+                if col < sidebar_w / 2 {
+                    self.mouse.hover = HoverZone::SidebarTabHist;
+                } else {
+                    self.mouse.hover = HoverZone::SidebarTabCol;
+                }
+            } else if row >= 1 {
+                let idx = (row - 1) as usize;
+                if idx < self.sidebar_len() {
+                    self.mouse.hover = HoverZone::SidebarItem(idx);
+                    self.sidebar_hover = Some(idx);
+                } else {
+                    self.mouse.hover = HoverZone::Ninguno;
+                    self.sidebar_hover = None;
+                }
+            } else {
+                self.mouse.hover = HoverZone::Ninguno;
+            }
+            return;
+        }
+
+        // Main panels: method+url = rows 0-2, headers desde row 3
+        if row < 3 {
+            if col < sidebar_w + 12 {
+                self.mouse.hover = HoverZone::BtnMetodo;
+            } else {
+                self.mouse.hover = HoverZone::BtnUrl;
+            }
+        } else if row < 3 + self.alto_headers {
+            self.mouse.hover = HoverZone::BtnHeaders;
+        } else if row < 3 + self.alto_headers + self.alto_body {
+            self.mouse.hover = HoverZone::BtnBody;
+        } else {
+            self.mouse.hover = HoverZone::BtnResponse;
+        }
+    }
+
     /// Sincroniza el foco principal de UI con el tab superior activo.
     pub fn foco_desde_tab(&mut self) {
         self.foco = match self.tab_activo {
@@ -391,7 +1066,29 @@ impl EstadoApp {
             .iter()
             .position(|m| *m == self.request.method)
             .unwrap_or(0);
-        self.mensaje_estado = "Selector de método abierto.".to_string();
+        self.mensaje_estado = "selector de metodo abierto".to_string();
+    }
+
+    pub fn abrir_command_palette(&mut self) {
+        self.modal_activo = ModalActivo::CommandPalette;
+        self.menu_selector_idx = 0;
+        self.mensaje_estado = "command palette".to_string();
+    }
+
+    pub fn abrir_selector_tema(&mut self) {
+        self.modal_activo = ModalActivo::SelectorTema;
+        self.menu_selector_idx = crate::ui::theme::TemaVariant::todos()
+            .iter()
+            .position(|t| *t == self.tema)
+            .unwrap_or(0);
+    }
+
+    pub fn abrir_selector_idioma(&mut self) {
+        self.modal_activo = ModalActivo::SelectorIdioma;
+        self.menu_selector_idx = Idioma::todos()
+            .iter()
+            .position(|l| *l == self.idioma)
+            .unwrap_or(0);
     }
 
     pub fn abrir_ayuda_rapida(&mut self) {
@@ -529,6 +1226,9 @@ pub enum AccionMenu {
     SelectorMetodo,
     EjecutarRequest,
     AyudaIa,
+    ToggleJsonFormat,
+    SelectorTema,
+    SelectorIdioma,
 }
 
 impl MenuSuperior {
@@ -581,13 +1281,16 @@ impl MenuSuperior {
 
 pub fn etiqueta_accion_menu(accion: AccionMenu) -> &'static str {
     match accion {
-        AccionMenu::AbrirAyudaRapida => "Abrir ayuda rápida",
-        AccionMenu::GuardarTodo => "Guardar todo",
-        AccionMenu::Importar => "Importar snapshot",
-        AccionMenu::Exportar => "Exportar snapshot",
-        AccionMenu::SelectorMetodo => "Seleccionar método HTTP",
-        AccionMenu::EjecutarRequest => "Ejecutar request",
-        AccionMenu::AyudaIa => "Sugerencia IA",
+        AccionMenu::AbrirAyudaRapida => "help",
+        AccionMenu::GuardarTodo => "save all",
+        AccionMenu::Importar => "import snapshot",
+        AccionMenu::Exportar => "export snapshot",
+        AccionMenu::SelectorMetodo => "select HTTP method",
+        AccionMenu::EjecutarRequest => "run request",
+        AccionMenu::AyudaIa => "AI suggestion",
+        AccionMenu::ToggleJsonFormat => "toggle JSON format",
+        AccionMenu::SelectorTema => "change theme",
+        AccionMenu::SelectorIdioma => "change language",
     }
 }
 
