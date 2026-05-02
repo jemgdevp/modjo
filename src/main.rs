@@ -27,6 +27,7 @@ use tokio::sync::mpsc;
 async fn main() -> Result<()> {
     color_eyre::install()?;
     let mut estado_app = EstadoApp::cargar_o_predeterminado()?;
+    crate::ui::theme::set_active_theme(estado_app.tema);
     let (canal_respuesta_tx, mut canal_respuesta_rx) = mpsc::unbounded_channel::<ResponseData>();
 
     // Entramos en modo alterno para que la UI tome control completo de la terminal.
@@ -75,7 +76,24 @@ async fn ejecutar_bucle_principal(
             estado_app.aplicar_respuesta(respuesta);
         }
 
-        terminal.draw(|frame| ui::render(frame, estado_app))?;
+        estado_app.tick = estado_app.tick.wrapping_add(1);
+
+        // Limpiar toasts expirados
+        if estado_app.toast.as_ref().map_or(false, |t| !t.activo()) {
+            estado_app.toast = None;
+        }
+        if estado_app
+            .clipboard_anim
+            .as_ref()
+            .map_or(false, |c| !c.activo())
+        {
+            estado_app.clipboard_anim = None;
+        }
+
+        terminal.draw(|frame| {
+            estado_app.terminal_height = frame.area().height;
+            ui::render(frame, estado_app)
+        })?;
 
         if event::poll(Duration::from_millis(50))? {
             let evento = event::read()?;
@@ -188,6 +206,9 @@ async fn ejecutar_bucle_principal(
                             }
                         }
                         AccionMenu::SelectorMetodo => estado_app.abrir_selector_metodo(),
+                        AccionMenu::ToggleJsonFormat => estado_app.toggle_response_format(),
+                        AccionMenu::SelectorTema => estado_app.abrir_selector_tema(),
+                        AccionMenu::SelectorIdioma => estado_app.abrir_selector_idioma(),
                         AccionMenu::EjecutarRequest => {
                             if !estado_app.loading {
                                 let request_pendiente = PendingRequest::from(&*estado_app);
