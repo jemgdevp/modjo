@@ -1,6 +1,9 @@
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
 
-use crate::app::{AccionMenu, EstadoApp, ModalActivo, ModoEntrada, SidebarActiva, ZonaFoco};
+use crate::app::{
+    AccionMenu, DragState, EstadoApp, HoverZone, ModalActivo, ModoEntrada, SidebarActiva, TipoDrag,
+    ZonaFoco,
+};
 
 pub enum AccionApp {
     Salir,
@@ -17,81 +20,212 @@ pub fn manejar_evento(app: &mut EstadoApp, event: Event) -> Option<AccionApp> {
     match event {
         Event::Key(key) if key.kind == KeyEventKind::Press => {
             if app.modal_activo != ModalActivo::Ninguno {
-                return manejar_tecla_modal(app, key.code);
+                return manejar_tecla_modal(app, key.code, key.modifiers);
             }
             if app.modo == ModoEntrada::Insertar {
-                return manejar_tecla_insertar(app, key.code);
+                return manejar_tecla_insertar(app, key.code, key.modifiers);
             }
             manejar_tecla_normal(app, key.code, key.modifiers)
         }
-        Event::Mouse(mouse) => {
-            if matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left)) {
-                if app.modal_activo == ModalActivo::SelectorMetodo {
-                    if mouse.row > 8 {
-                        let idx = (mouse.row - 9) as usize;
-                        let max = crate::app::metodos_http().len();
-                        if idx < max {
-                            app.metodo_idx_selector = idx;
-                            app.confirmar_selector_metodo();
-                        }
+        Event::Mouse(mouse) => manejar_mouse(app, mouse),
+        _ => None,
+    }
+}
+
+// ── Mouse handler completo ──────────────────────────────────────────────
+
+fn manejar_mouse(
+    app: &mut EstadoApp,
+    mouse: crossterm::event::MouseEvent,
+) -> Option<AccionApp> {
+    match mouse.kind {
+        // ── Movimiento del mouse (hover tracking) ──
+        MouseEventKind::Moved => {
+            app.actualizar_hover(mouse.row, mouse.column, app.terminal_height);
+            None
+        }
+
+        // ── Click izquierdo ──
+        MouseEventKind::Down(MouseButton::Left) => {
+            // Si hay drag activo, lo cancelamos
+            app.drag_state = None;
+
+            // Modal abierto — usar hover zone para detectar item
+            if app.modal_activo == ModalActivo::SelectorMetodo {
+                if let HoverZone::ModalItem(idx) = app.mouse.hover {
+                    let max = crate::app::metodos_http().len();
+                    if idx < max {
+                        app.metodo_idx_selector = idx;
+                        app.confirmar_selector_metodo();
                     }
-                    return None;
                 }
-                if app.modal_activo == ModalActivo::SelectorMenuSuperior {
-                    if mouse.row > 8 {
-                        let idx = (mouse.row - 9) as usize;
-                        let max = app.menu_superior_activo.opciones().len();
-                        if idx < max {
-                            app.menu_selector_idx = idx;
-                            if let Some(accion) = app.aplicar_opcion_menu_actual() {
-                                return Some(AccionApp::EjecutarAccionMenu(accion));
-                            }
+                return None;
+            }
+            if app.modal_activo == ModalActivo::SelectorMenuSuperior {
+                if let HoverZone::ModalItem(idx) = app.mouse.hover {
+                    let max = app.menu_superior_activo.opciones().len();
+                    if idx < max {
+                        app.menu_selector_idx = idx;
+                        if let Some(accion) = app.aplicar_opcion_menu_actual() {
+                            return Some(AccionApp::EjecutarAccionMenu(accion));
                         }
                     }
-                    return None;
                 }
-                if mouse.row <= 2 {
-                    if mouse.row == 1 {
-                        if let Some(menu) = menu_desde_columna(mouse.column) {
-                            app.menu_superior_activo = menu;
-                            app.foco = ZonaFoco::MenuSuperior;
-                            app.abrir_selector_menu_superior();
-                            return None;
-                        }
-                    } else if mouse.row == 2 {
-                        if mouse.column > 6 && mouse.column < 16 {
-                            app.tab_activo = 0;
-                        } else if mouse.column >= 16 && mouse.column < 28 {
-                            app.tab_activo = 1;
-                        } else if mouse.column >= 28 && mouse.column < 38 {
-                            app.tab_activo = 2;
-                        } else if mouse.column >= 38 && mouse.column < 53 {
-                            app.tab_activo = 3;
-                        }
-                        app.foco_desde_tab();
-                        app.mensaje_estado = "Tab cambiado con mouse.".to_string();
-                    }
-                } else if mouse.column < app.ancho_sidebar {
-                    app.foco = ZonaFoco::Sidebar;
-                } else if mouse.row < 8 {
-                    app.foco = if mouse.column < app.ancho_sidebar + 14 {
-                        ZonaFoco::Metodo
-                    } else {
-                        ZonaFoco::Url
-                    };
-                } else if mouse.row < 8 + app.alto_headers {
+                return None;
+            }
+
+            // Click en zona de resize
+            if app.mouse.hover == HoverZone::ResizeSidebar {
+                app.drag_state = Some(DragState {
+                    tipo: TipoDrag::SidebarAncho,
+                    inicio_x: mouse.column,
+                    inicio_y: mouse.row,
+                    valor_inicial: app.ancho_sidebar,
+                });
+                return None;
+            }
+            if app.mouse.hover == HoverZone::ResizeHeaders {
+                app.drag_state = Some(DragState {
+                    tipo: TipoDrag::AltoHeaders,
+                    inicio_x: mouse.column,
+                    inicio_y: mouse.row,
+                    valor_inicial: app.alto_headers,
+                });
+                return None;
+            }
+            if app.mouse.hover == HoverZone::ResizeBody {
+                app.drag_state = Some(DragState {
+                    tipo: TipoDrag::AltoBody,
+                    inicio_x: mouse.column,
+                    inicio_y: mouse.row,
+                    valor_inicial: app.alto_body,
+                });
+                return None;
+            }
+
+            // Click en sidebar tabs
+            if app.mouse.hover == HoverZone::SidebarTabHist {
+                app.sidebar = SidebarActiva::Historial;
+                app.sidebar_index = 0;
+                app.foco = ZonaFoco::Sidebar;
+                app.focus_flash = Some(std::time::Instant::now());
+                return None;
+            }
+            if app.mouse.hover == HoverZone::SidebarTabCol {
+                app.sidebar = SidebarActiva::Colecciones;
+                app.sidebar_index = 0;
+                app.foco = ZonaFoco::Sidebar;
+                app.focus_flash = Some(std::time::Instant::now());
+                return None;
+            }
+
+            // Click en sidebar item — select and load
+            if let HoverZone::SidebarItem(idx) = app.mouse.hover {
+                app.foco = ZonaFoco::Sidebar;
+                app.focus_flash = Some(std::time::Instant::now());
+                if idx < app.sidebar_len() {
+                    app.sidebar_index = idx;
+                    app.activar_item_sidebar();
+                    app.sync_cursor_to_end();
+                }
+                return None;
+            }
+
+            // Click en paneles principales
+            match app.mouse.hover {
+                HoverZone::BtnMetodo => {
+                    app.foco = ZonaFoco::Metodo;
+                    app.focus_flash = Some(std::time::Instant::now());
+                    app.sync_cursor_to_end();
+                }
+                HoverZone::BtnUrl => {
+                    app.foco = ZonaFoco::Url;
+                    app.focus_flash = Some(std::time::Instant::now());
+                    app.sync_cursor_to_end();
+                }
+                HoverZone::BtnHeaders => {
                     app.foco = ZonaFoco::Headers;
-                } else if mouse.row < 8 + app.alto_headers + app.alto_body {
+                    app.focus_flash = Some(std::time::Instant::now());
+                    app.sync_cursor_to_end();
+                }
+                HoverZone::BtnBody => {
                     app.foco = ZonaFoco::Body;
-                } else {
+                    app.focus_flash = Some(std::time::Instant::now());
+                    app.sync_cursor_to_end();
+                }
+                HoverZone::BtnResponse => {
                     app.foco = ZonaFoco::Response;
+                    app.focus_flash = Some(std::time::Instant::now());
+                }
+                _ => {}
+            }
+            None
+        }
+
+        // ── Drag (mover resize) ──
+        MouseEventKind::Drag(MouseButton::Left) => {
+            if let Some(ref drag) = app.drag_state {
+                match drag.tipo {
+                    TipoDrag::SidebarAncho => {
+                        let nuevo = drag.valor_inicial as i16
+                            + (mouse.column as i16 - drag.inicio_x as i16);
+                        app.ancho_sidebar = nuevo.clamp(22, 55) as u16;
+                    }
+                    TipoDrag::AltoHeaders => {
+                        let delta = mouse.row as i16 - drag.inicio_y as i16;
+                        let nuevo_h = (drag.valor_inicial as i16 + delta).clamp(5, 16) as u16;
+                        let diff = nuevo_h as i16 - app.alto_headers as i16;
+                        app.alto_headers = nuevo_h;
+                        app.alto_body = (app.alto_body as i16 - diff).clamp(5, 16) as u16;
+                    }
+                    TipoDrag::AltoBody => {
+                        let delta = mouse.row as i16 - drag.inicio_y as i16;
+                        let nuevo_b = (drag.valor_inicial as i16 + delta).clamp(5, 16) as u16;
+                        let diff = nuevo_b as i16 - app.alto_body as i16;
+                        app.alto_body = nuevo_b;
+                        app.alto_headers = (app.alto_headers as i16 - diff).clamp(5, 16) as u16;
+                    }
                 }
             }
             None
         }
+
+        // ── Soltar ──
+        MouseEventKind::Up(MouseButton::Left) => {
+            app.drag_state = None;
+            None
+        }
+
+        // ── Scroll ──
+        MouseEventKind::ScrollUp => {
+            if app.foco == ZonaFoco::Response {
+                app.response_scroll_up(3);
+            } else if app.foco == ZonaFoco::Sidebar || app.foco == ZonaFoco::MenuSuperior {
+                app.prev_sidebar_item();
+            } else {
+                app.tab_activo = app.tab_activo.saturating_sub(1);
+                app.foco_desde_tab();
+            }
+            None
+        }
+        MouseEventKind::ScrollDown => {
+            if app.foco == ZonaFoco::Response {
+                let max = app.response_body_lines().saturating_sub(5);
+                app.response_scroll_down(3, max);
+            } else if app.foco == ZonaFoco::Sidebar || app.foco == ZonaFoco::MenuSuperior {
+                app.next_sidebar_item();
+            } else {
+                app.tab_activo = (app.tab_activo + 1).min(3);
+                app.foco_desde_tab();
+            }
+            None
+        }
+
         _ => None,
     }
 }
+
+// ── Teclado modo normal ────────────────────────────────────────────────
 
 fn manejar_tecla_normal(
     app: &mut EstadoApp,
@@ -103,30 +237,62 @@ fn manejar_tecla_normal(
         (KeyCode::Char('1'), _) => {
             app.tab_activo = 0;
             app.foco_desde_tab();
-            app.mensaje_estado = "Tab Request activo.".to_string();
+            app.sync_cursor_to_end();
+            app.mostrar_toast("tab: request");
             None
         }
         (KeyCode::Char('2'), _) => {
             app.tab_activo = 1;
             app.foco_desde_tab();
-            app.mensaje_estado = "Tab Headers activo.".to_string();
+            app.sync_cursor_to_end();
+            app.mostrar_toast("tab: headers");
             None
         }
         (KeyCode::Char('3'), _) => {
             app.tab_activo = 2;
             app.foco_desde_tab();
-            app.mensaje_estado = "Tab Body activo.".to_string();
+            app.sync_cursor_to_end();
+            app.mostrar_toast("tab: body");
             None
         }
         (KeyCode::Char('4'), _) => {
             app.tab_activo = 3;
             app.foco_desde_tab();
-            app.mensaje_estado = "Tab Response activo.".to_string();
+            app.mostrar_toast("tab: response");
             None
         }
         (KeyCode::Char('i'), _) => {
             app.modo = ModoEntrada::Insertar;
-            app.mensaje_estado = "Modo INSERTAR activo. Escribe tranquilo.".to_string();
+            app.sync_cursor_to_end();
+            app.mostrar_toast("insert mode");
+            None
+        }
+        (KeyCode::Char('a'), _) if modifiers.is_empty() => {
+            app.modo = ModoEntrada::Insertar;
+            if let Some(texto) = app.texto_foco_mut() {
+                app.cursor.posicion = texto.len();
+            }
+            app.mostrar_toast("insert at end");
+            None
+        }
+        (KeyCode::Char('I'), _) => {
+            app.modo = ModoEntrada::Insertar;
+            app.cursor.posicion = 0;
+            app.mostrar_toast("insert at start");
+            None
+        }
+        (KeyCode::Char('A'), _) => {
+            app.modo = ModoEntrada::Insertar;
+            app.cursor_end();
+            app.mostrar_toast("append");
+            None
+        }
+        (KeyCode::Char('0'), _) => {
+            app.cursor_home();
+            None
+        }
+        (KeyCode::Char('$'), _) => {
+            app.cursor_end();
             None
         }
         (KeyCode::Char('m'), _) => {
@@ -139,41 +305,56 @@ fn manejar_tecla_normal(
         }
         (KeyCode::Tab, _) => {
             app.foco = app.foco.siguiente();
-            app.mensaje_estado = format!("Cambio de ventana: {:?}", app.foco);
+            app.sync_cursor_to_end();
+            app.focus_flash = Some(std::time::Instant::now());
+            app.mostrar_toast(format!("{:?}", app.foco));
             None
         }
         (KeyCode::BackTab, _) => {
             app.tab_activo = if app.tab_activo == 0 { 3 } else { app.tab_activo - 1 };
             app.foco_desde_tab();
+            app.sync_cursor_to_end();
             None
         }
-        (KeyCode::Char('h'), _) => {
+        (KeyCode::Char('h'), _) if modifiers.is_empty() => {
             app.sidebar = SidebarActiva::Historial;
             app.foco = ZonaFoco::Sidebar;
             app.sidebar_index = 0;
+            app.focus_flash = Some(std::time::Instant::now());
             None
         }
-        (KeyCode::Char('l'), _) => {
+        (KeyCode::Char('l'), _) if modifiers.is_empty() => {
             app.sidebar = SidebarActiva::Colecciones;
             app.foco = ZonaFoco::Sidebar;
             app.sidebar_index = 0;
+            app.focus_flash = Some(std::time::Instant::now());
             None
         }
-        (KeyCode::Up, _) => {
+        (KeyCode::Up | KeyCode::Char('k'), _) => {
             match app.foco {
                 ZonaFoco::Sidebar => app.prev_sidebar_item(),
                 ZonaFoco::MenuSuperior => app.mover_menu_superior(-1),
-                _ => app.tab_activo = app.tab_activo.saturating_sub(1),
+                ZonaFoco::Response => app.response_scroll_up(1),
+                _ => {
+                    app.tab_activo = app.tab_activo.saturating_sub(1);
+                    app.foco_desde_tab();
+                }
             }
             None
         }
-        (KeyCode::Down, _) => {
+        (KeyCode::Down | KeyCode::Char('j'), _) => {
             match app.foco {
                 ZonaFoco::Sidebar => app.next_sidebar_item(),
                 ZonaFoco::MenuSuperior => app.mover_menu_superior(1),
-                _ => app.tab_activo = (app.tab_activo + 1).min(3),
+                ZonaFoco::Response => {
+                    let max = app.response_body_lines().saturating_sub(5);
+                    app.response_scroll_down(1, max);
+                }
+                _ => {
+                    app.tab_activo = (app.tab_activo + 1).min(3);
+                    app.foco_desde_tab();
+                }
             }
-            app.foco_desde_tab();
             None
         }
         (KeyCode::Left, _) => {
@@ -182,6 +363,7 @@ fn manejar_tecla_normal(
             } else {
                 app.tab_activo = app.tab_activo.saturating_sub(1);
                 app.foco_desde_tab();
+                app.sync_cursor_to_end();
             }
             None
         }
@@ -191,12 +373,16 @@ fn manejar_tecla_normal(
             } else {
                 app.tab_activo = (app.tab_activo + 1).min(3);
                 app.foco_desde_tab();
+                app.sync_cursor_to_end();
             }
             None
         }
         (KeyCode::Enter, _) => {
             match app.foco {
-                ZonaFoco::Sidebar => app.activar_item_sidebar(),
+                ZonaFoco::Sidebar => {
+                    app.activar_item_sidebar();
+                    app.sync_cursor_to_end();
+                }
                 ZonaFoco::MenuSuperior => app.abrir_selector_menu_superior(),
                 _ => {}
             }
@@ -207,26 +393,46 @@ fn manejar_tecla_normal(
         (KeyCode::Char('c'), _) => Some(AccionApp::GuardarColeccion),
         (KeyCode::Char('o'), _) => Some(AccionApp::Importar),
         (KeyCode::Char('e'), _) => Some(AccionApp::Exportar),
-        (KeyCode::Char('a'), _) => Some(AccionApp::EjecutarAyudaIa),
+        (KeyCode::Char('a'), KeyModifiers::CONTROL) => Some(AccionApp::EjecutarAyudaIa),
+        (KeyCode::Char('T'), _) => {
+            app.abrir_selector_tema();
+            None
+        }
+        (KeyCode::Char('L'), KeyModifiers::CONTROL) => {
+            app.redimensionar_paneles(2, 0, 0);
+            None
+        }
+        (KeyCode::Char('L'), _) => {
+            app.abrir_selector_idioma();
+            None
+        }
         (KeyCode::Char('y'), _) => {
-            app.portapapeles_interno = texto_activo(app);
-            app.mensaje_estado = "Copiado ninja (yank) al portapapeles interno.".to_string();
+            let texto = texto_activo(app);
+            app.portapapeles_interno = texto.clone();
+            app.animar_clipboard(&texto);
+            app.mostrar_toast("yanked!");
+            None
+        }
+        (KeyCode::Char('p'), KeyModifiers::CONTROL) => {
+            app.abrir_command_palette();
             None
         }
         (KeyCode::Char('p'), _) => {
             let clip = app.portapapeles_interno.clone();
             if !clip.is_empty() {
+                app.push_undo();
                 pegar_texto_activo(app, &clip);
-                app.mensaje_estado = "Pegado ninja listo.".to_string();
+                app.animar_clipboard(&clip);
+                app.mostrar_toast("pasted!");
             }
+            None
+        }
+        (KeyCode::Char('u'), _) => {
+            app.undo();
             None
         }
         (KeyCode::Char('H'), KeyModifiers::CONTROL) => {
             app.redimensionar_paneles(-2, 0, 0);
-            None
-        }
-        (KeyCode::Char('L'), KeyModifiers::CONTROL) => {
-            app.redimensionar_paneles(2, 0, 0);
             None
         }
         (KeyCode::Char('K'), KeyModifiers::CONTROL) => {
@@ -238,49 +444,137 @@ fn manejar_tecla_normal(
             None
         }
         (KeyCode::Char('s'), KeyModifiers::CONTROL) => Some(AccionApp::GuardarTodo),
-        _ => None,
-    }
-}
-
-fn manejar_tecla_insertar(app: &mut EstadoApp, code: KeyCode) -> Option<AccionApp> {
-    match code {
-        KeyCode::Esc => {
-            app.modo = ModoEntrada::Normal;
-            app.mensaje_estado = "Modo NORMAL. Usa r para ejecutar.".to_string();
+        (KeyCode::Char('z'), KeyModifiers::CONTROL) => {
+            app.undo();
             None
         }
-        KeyCode::Backspace => {
-            editar_texto_activo(app, Mutacion::Borrar);
+        (KeyCode::Char('f'), _) => {
+            app.toggle_response_format();
             None
         }
-        KeyCode::Enter => {
-            if app.foco == ZonaFoco::Body {
-                editar_texto_activo(app, Mutacion::Agregar('\n'));
+        (KeyCode::PageUp, _) => {
+            if app.foco == ZonaFoco::Response {
+                app.response_page_up(10);
+            } else {
+                app.tab_activo = app.tab_activo.saturating_sub(1);
+                app.foco_desde_tab();
             }
             None
         }
-        KeyCode::Char(ch) => {
-            editar_texto_activo(app, Mutacion::Agregar(ch));
+        (KeyCode::PageDown, _) => {
+            if app.foco == ZonaFoco::Response {
+                let max = app.response_body_lines().saturating_sub(5);
+                app.response_page_down(10, max);
+            } else {
+                app.tab_activo = (app.tab_activo + 1).min(3);
+                app.foco_desde_tab();
+            }
+            None
+        }
+        (KeyCode::Home, _) if app.foco == ZonaFoco::Response => {
+            app.response_scroll = 0;
+            None
+        }
+        (KeyCode::End, _) if app.foco == ZonaFoco::Response => {
+            let max = app.response_body_lines().saturating_sub(5);
+            app.response_scroll = max;
             None
         }
         _ => None,
     }
 }
 
-fn manejar_tecla_modal(app: &mut EstadoApp, code: KeyCode) -> Option<AccionApp> {
+// ── Teclado modo insertar ──────────────────────────────────────────────
+
+fn manejar_tecla_insertar(
+    app: &mut EstadoApp,
+    code: KeyCode,
+    modifiers: KeyModifiers,
+) -> Option<AccionApp> {
+    match (code, modifiers) {
+        (KeyCode::Esc, _) => {
+            app.modo = ModoEntrada::Normal;
+            app.mostrar_toast("normal mode");
+            None
+        }
+        (KeyCode::Left, _) => {
+            app.cursor_left();
+            None
+        }
+        (KeyCode::Right, _) => {
+            app.cursor_right();
+            None
+        }
+        (KeyCode::Up, _) => {
+            app.cursor_up();
+            None
+        }
+        (KeyCode::Down, _) => {
+            app.cursor_down();
+            None
+        }
+        (KeyCode::Home, _) => {
+            app.cursor_line_start();
+            None
+        }
+        (KeyCode::End, _) => {
+            app.cursor_line_end();
+            None
+        }
+        (KeyCode::Backspace, _) => {
+            app.push_undo();
+            app.borrar_char();
+            None
+        }
+        (KeyCode::Delete, _) => {
+            app.push_undo();
+            app.borrar_adelante();
+            None
+        }
+        (KeyCode::Enter, _) => {
+            app.push_undo();
+            app.insertar_char('\n');
+            None
+        }
+        (KeyCode::Tab, _) => {
+            app.modo = ModoEntrada::Normal;
+            app.foco = app.foco.siguiente();
+            app.sync_cursor_to_end();
+            app.focus_flash = Some(std::time::Instant::now());
+            app.mostrar_toast(format!("{:?}", app.foco));
+            None
+        }
+        (KeyCode::Char('z'), KeyModifiers::CONTROL) => {
+            app.undo();
+            None
+        }
+        (KeyCode::Char(ch), _) => {
+            app.push_undo();
+            app.insertar_char_con_autocomplete(ch);
+            None
+        }
+        _ => None,
+    }
+}
+
+// ── Teclado modal ──────────────────────────────────────────────────────
+
+fn manejar_tecla_modal(
+    app: &mut EstadoApp,
+    code: KeyCode,
+    _modifiers: KeyModifiers,
+) -> Option<AccionApp> {
     match app.modal_activo {
         ModalActivo::Ninguno => None,
         ModalActivo::AyudaRapida => {
-            if matches!(code, KeyCode::Esc | KeyCode::Enter) {
+            if matches!(code, KeyCode::Esc | KeyCode::Enter | KeyCode::Char('?')) {
                 app.cerrar_modal();
-                app.mensaje_estado = "Modal de ayuda cerrado.".to_string();
             }
             None
         }
         ModalActivo::SelectorMetodo => match code {
             KeyCode::Esc => {
                 app.cerrar_modal();
-                app.mensaje_estado = "Selector de método cancelado.".to_string();
                 None
             }
             KeyCode::Up | KeyCode::Char('k') => {
@@ -325,25 +619,112 @@ fn manejar_tecla_modal(app: &mut EstadoApp, code: KeyCode) -> Option<AccionApp> 
                 .map(AccionApp::EjecutarAccionMenu),
             _ => None,
         },
+        ModalActivo::CommandPalette => match code {
+            KeyCode::Esc => {
+                app.cerrar_modal();
+                None
+            }
+            KeyCode::Up | KeyCode::Char('k') => {
+                let total = crate::app::comandos_disponibles().len();
+                if total > 0 {
+                    app.menu_selector_idx = if app.menu_selector_idx == 0 {
+                        total - 1
+                    } else {
+                        app.menu_selector_idx - 1
+                    };
+                }
+                None
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                let total = crate::app::comandos_disponibles().len();
+                if total > 0 {
+                    app.menu_selector_idx = (app.menu_selector_idx + 1) % total;
+                }
+                None
+            }
+            KeyCode::Enter => {
+                let comandos = crate::app::comandos_disponibles();
+                if let Some(cmd) = comandos.get(app.menu_selector_idx) {
+                    let accion = cmd.accion;
+                    app.cerrar_modal();
+                    return Some(AccionApp::EjecutarAccionMenu(accion));
+                }
+                None
+            }
+            _ => None,
+        },
+        ModalActivo::SelectorTema => match code {
+            KeyCode::Esc => {
+                app.cerrar_modal();
+                None
+            }
+            KeyCode::Up | KeyCode::Char('k') => {
+                let total = crate::ui::theme::TemaVariant::todos().len();
+                if total > 0 {
+                    app.menu_selector_idx = if app.menu_selector_idx == 0 {
+                        total - 1
+                    } else {
+                        app.menu_selector_idx - 1
+                    };
+                }
+                None
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                let total = crate::ui::theme::TemaVariant::todos().len();
+                if total > 0 {
+                    app.menu_selector_idx = (app.menu_selector_idx + 1) % total;
+                }
+                None
+            }
+            KeyCode::Enter => {
+                let temas = crate::ui::theme::TemaVariant::todos();
+                if let Some(tema) = temas.get(app.menu_selector_idx) {
+                    app.tema = *tema;
+                    crate::ui::theme::set_active_theme(*tema);
+                    let _ = crate::storage::save_all(app);
+                    app.mostrar_toast(format!("theme: {}", tema.nombre()));
+                }
+                app.cerrar_modal();
+                None
+            }
+            _ => None,
+        },
+        ModalActivo::SelectorIdioma => match code {
+            KeyCode::Esc => {
+                app.cerrar_modal();
+                None
+            }
+            KeyCode::Up | KeyCode::Char('k') => {
+                let total = crate::app::Idioma::todos().len();
+                if total > 0 {
+                    app.menu_selector_idx = if app.menu_selector_idx == 0 {
+                        total - 1
+                    } else {
+                        app.menu_selector_idx - 1
+                    };
+                }
+                None
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                let total = crate::app::Idioma::todos().len();
+                if total > 0 {
+                    app.menu_selector_idx = (app.menu_selector_idx + 1) % total;
+                }
+                None
+            }
+            KeyCode::Enter => {
+                let idiomas = crate::app::Idioma::todos();
+                if let Some(idioma) = idiomas.get(app.menu_selector_idx) {
+                    app.idioma = *idioma;
+                    let _ = crate::storage::save_all(app);
+                    app.mostrar_toast(format!("language: {}", idioma.nombre()));
+                }
+                app.cerrar_modal();
+                None
+            }
+            _ => None,
+        },
     }
-}
-
-fn menu_desde_columna(columna: u16) -> Option<crate::app::MenuSuperior> {
-    let tabla = [
-        (1, 6, crate::app::MenuSuperior::Help),
-        (8, 13, crate::app::MenuSuperior::File),
-        (15, 20, crate::app::MenuSuperior::Edit),
-        (22, 32, crate::app::MenuSuperior::Selection),
-        (34, 39, crate::app::MenuSuperior::View),
-        (41, 44, crate::app::MenuSuperior::Go),
-        (46, 50, crate::app::MenuSuperior::Run),
-        (52, 57, crate::app::MenuSuperior::Todo),
-        (59, 62, crate::app::MenuSuperior::Ai),
-    ];
-    tabla
-        .iter()
-        .find(|(inicio, fin, _)| columna >= *inicio && columna <= *fin)
-        .map(|(_, _, menu)| *menu)
 }
 
 fn texto_activo(app: &EstadoApp) -> String {
@@ -369,44 +750,31 @@ fn texto_activo(app: &EstadoApp) -> String {
 
 fn pegar_texto_activo(app: &mut EstadoApp, payload: &str) {
     match app.foco {
-        ZonaFoco::Metodo => app.request.method.push_str(payload),
-        ZonaFoco::Url => app.request.url.push_str(payload),
-        ZonaFoco::Body => app.request.body.push_str(payload),
+        ZonaFoco::Metodo => {
+            let pos = app.cursor.posicion.min(app.request.method.len());
+            app.request.method.insert_str(pos, payload);
+            app.cursor.posicion = pos + payload.len();
+        }
+        ZonaFoco::Url => {
+            let pos = app.cursor.posicion.min(app.request.url.len());
+            app.request.url.insert_str(pos, payload);
+            app.cursor.posicion = pos + payload.len();
+        }
+        ZonaFoco::Body => {
+            let pos = app.cursor.posicion.min(app.request.body.len());
+            app.request.body.insert_str(pos, payload);
+            app.cursor.posicion = pos + payload.len();
+        }
         ZonaFoco::Headers => {
             if app.request.headers.is_empty() {
                 app.request.headers.push((String::new(), String::new()));
             }
-            app.request.headers[0].1.push_str(payload);
-        }
-        _ => {}
-    }
-}
-
-enum Mutacion {
-    Agregar(char),
-    Borrar,
-}
-
-fn editar_texto_activo(app: &mut EstadoApp, mutacion: Mutacion) {
-    match app.foco {
-        ZonaFoco::Metodo => aplicar_mutacion(&mut app.request.method, mutacion),
-        ZonaFoco::Url => aplicar_mutacion(&mut app.request.url, mutacion),
-        ZonaFoco::Body => aplicar_mutacion(&mut app.request.body, mutacion),
-        ZonaFoco::Headers => {
-            if app.request.headers.is_empty() {
-                app.request.headers.push((String::new(), String::new()));
+            if let Some((_, v)) = app.request.headers.first_mut() {
+                let pos = app.cursor.posicion.min(v.len());
+                v.insert_str(pos, payload);
+                app.cursor.posicion = pos + payload.len();
             }
-            aplicar_mutacion(&mut app.request.headers[0].1, mutacion);
         }
         _ => {}
-    }
-}
-
-fn aplicar_mutacion(target: &mut String, mutacion: Mutacion) {
-    match mutacion {
-        Mutacion::Agregar(ch) => target.push(ch),
-        Mutacion::Borrar => {
-            target.pop();
-        }
     }
 }
