@@ -27,3 +27,9 @@ target
 
 # Cursor
 .cursor/
+
+# OpenCode
+.opencode/
+
+# Modjo
+.modjo/
